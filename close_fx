@@ -1,0 +1,30 @@
+def remove_close_fx(df):
+    res=[]
+    for i, (x,y) in enumerate(zip(df['BUY_CCY'],df['SELL_CCY'])):
+        sell_col = df.where((df['BUY_CCY']==y)&(df['SELL_CCY']==x)).dropna()['SELL_AMT']
+        nums_list = sell_col.tolist()
+        target = df.loc[i]['BUY_AMT']
+        result = find_sum_in_list(nums_list, target)
+        res.append([(x,y),result])
+        
+    for i in res:
+        amt = next(iter(i[1] or []),None)
+        x, y = i[0]
+        if amt:
+            sell_col = df.where((df['BUY_CCY']==y)&(df['SELL_CCY']==x)).dropna()['SELL_AMT']
+            for j in amt:
+                idx = sell_col[sell_col== j].index
+                df = df.drop(idx[0])
+                amt = filter(j, amt)
+                
+def find_sum_in_list(numbers, target):
+    results = []
+    for x in range(1,len(numbers)+1):
+        results.extend(
+            [   
+                combo for combo in combinations(numbers ,x)  
+                    if sum(combo) == target
+            ]   
+        )   
+
+    return results 
