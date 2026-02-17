@@ -1,0 +1,233 @@
+Sub CreatePortfolioWorksheets()
+    Dim ws1 As Worksheet, ws2 As Worksheet
+    Dim newWs As Worksheet
+    Dim lastRow1 As Long, lastRow2 As Long, lastCol1 As Long, lastCol2 As Long
+    Dim i As Long, j As Long, k As Long
+    Dim portfolios As Collection
+    Dim pf As Variant
+    Dim stockCol1 As Long, stockCol2 As Long
+    Dim matchCols1() As Long, matchCols2() As Long
+    Dim matchColCount As Long
+    Dim valueCols1 As Collection, valueCols2 As Collection
+    Dim valueCol As Variant
+    Dim valueColName As String
+    
+    Application.DisplayAlerts = False
+    
+    ' Set references to worksheets
+    Set ws1 = ThisWorkbook.Sheets("Yesterday")
+    Set ws2 = ThisWorkbook.Sheets("Today")
+    
+    ' Find the last columns
+    lastCol1 = ws1.Cells(1, ws1.Columns.Count).End(xlToLeft).Column
+    lastCol2 = ws2.Cells(1, ws2.Columns.Count).End(xlToLeft).Column
+    
+    ' Initialize collections for value columns
+    Set valueCols1 = New Collection
+    Set valueCols2 = New Collection
+    
+    ' Find columns to match and value columns
+    Dim matchColNames As Collection
+    Set matchColNames = New Collection
+    
+    ' Add your specific matching column names here
+    matchColNames.Add "Stock"
+    matchColNames.Add "Depository"
+    ' Add any other text-based identifier columns here
+    
+    ' Create collections to store the column indices
+    Dim matchIndices1 As Collection, matchIndices2 As Collection
+    Set matchIndices1 = New Collection
+    Set matchIndices2 = New Collection
+    
+    ' Find matching columns and value columns in Yesterday's sheet
+    For i = 1 To lastCol1
+        Dim headerName As String
+        headerName = ws1.Cells(1, i).Value
+        
+        ' Check if this is a matching column
+        On Error Resume Next
+        For Each colName In matchColNames
+            If headerName = colName Then
+                matchIndices1.Add i
+                Exit For
+            End If
+        Next colName
+        On Error GoTo 0
+        
+        ' Check if this is a value column
+        If Right(headerName, 5) = "Value" Then
+            valueCols1.Add i, headerName
+        End If
+    Next i
+    
+    ' Find matching columns and value columns in Today's sheet
+    For i = 1 To lastCol2
+        headerName = ws2.Cells(1, i).Value
+        
+        ' Check if this is a matching column
+        On Error Resume Next
+        For Each colName In matchColNames
+            If headerName = colName Then
+                matchIndices2.Add i
+                Exit For
+            End If
+        Next colName
+        On Error GoTo 0
+        
+        ' Check if this is a value column
+        If Right(headerName, 5) = "Value" Then
+            valueCols2.Add i, headerName
+        End If
+    Next i
+    
+    ' Get unique portfolios
+    Set portfolios = New Collection
+    On Error Resume Next
+    lastRow1 = ws1.Cells(ws1.Rows.Count, "A").End(xlUp).Row
+    lastRow2 = ws2.Cells(ws2.Rows.Count, "A").End(xlUp).Row
+    
+    For i = 2 To lastRow1
+        portfolios.Add ws1.Cells(i, "A").Value, CStr(ws1.Cells(i, "A").Value)
+    Next i
+    
+    For i = 2 To lastRow2
+        portfolios.Add ws2.Cells(i, "A").Value, CStr(ws2.Cells(i, "A").Value)
+    Next i
+    On Error GoTo 0
+    
+    ' Create worksheet for each portfolio
+    For Each pf In portfolios
+        ' Delete existing sheet if it exists
+        On Error Resume Next
+        ThisWorkbook.Sheets(CStr(pf)).Delete
+        On Error GoTo 0
+        
+        ' Create new worksheet
+        Set newWs = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
+        newWs.Name = CStr(pf)
+        
+        ' Set up headers
+        Dim currentCol As Long
+        currentCol = 1
+        
+        ' Copy matching columns headers
+        For Each colIndex In matchIndices1
+            newWs.Cells(1, currentCol).Value = ws1.Cells(1, colIndex).Value
+            currentCol = currentCol + 1
+        Next colIndex
+        
+        ' Add Yesterday/Today/Difference headers for each value type
+        For Each valueCol In valueCols1
+            valueColName = ws1.Cells(1, valueCol).Value
+            newWs.Cells(1, currentCol).Value = "Yesterday " & valueColName
+            newWs.Cells(1, currentCol + 1).Value = "Today " & valueColName
+            newWs.Cells(1, currentCol + 2).Value = valueColName & " Difference"
+            currentCol = currentCol + 3
+        Next valueCol
+        
+        ' Fill data
+        Dim rowCounter As Long
+        rowCounter = 2
+        
+        ' Process yesterday's data
+        For i = 2 To lastRow1
+            If ws1.Cells(i, "A").Value = pf Then
+                currentCol = 1
+                ' Copy matching columns
+                For Each colIndex In matchIndices1
+                    newWs.Cells(rowCounter, currentCol).Value = ws1.Cells(i, colIndex).Value
+                    currentCol = currentCol + 1
+                Next colIndex
+                
+                ' Copy yesterday's values
+                For Each valueCol In valueCols1
+                    newWs.Cells(rowCounter, currentCol).Value = ws1.Cells(i, valueCol).Value
+                    currentCol = currentCol + 3
+                Next valueCol
+                rowCounter = rowCounter + 1
+            End If
+        Next i
+        
+        ' Process today's data and calculate differences
+        For i = 2 To lastRow2
+            If ws2.Cells(i, "A").Value = pf Then
+                Dim found As Boolean
+                found = False
+                
+                ' Look for matching records
+                For j = 2 To rowCounter - 1
+                    Dim isMatch As Boolean
+                    isMatch = True
+                    
+                    ' Check all matching columns
+                    Dim col1Index As Long, col2Index As Long
+                    For k = 1 To matchIndices1.Count
+                        col1Index = k
+                        col2Index = matchIndices2(k)
+                        
+                        If newWs.Cells(j, k).Value <> ws2.Cells(i, col2Index).Value Then
+                            isMatch = False
+                            Exit For
+                        End If
+                    Next k
+                    
+                    If isMatch Then
+                        ' Match found - add today's values and calculate differences
+                        currentCol = matchIndices1.Count + 1
+                        For Each valueCol In valueCols2
+                            newWs.Cells(j, currentCol + 1).Value = ws2.Cells(i, valueCol).Value
+                            newWs.Cells(j, currentCol + 2).Formula = "=" & _
+                                newWs.Cells(j, currentCol + 1).Address & "-" & _
+                                newWs.Cells(j, currentCol).Address
+                            currentCol = currentCol + 3
+                        Next valueCol
+                        found = True
+                        Exit For
+                    End If
+                Next j
+                
+                ' If no match found, add new row
+                If Not found Then
+                    currentCol = 1
+                    ' Copy matching columns
+                    For k = 1 To matchIndices2.Count
+                        newWs.Cells(rowCounter, currentCol).Value = ws2.Cells(i, matchIndices2(k)).Value
+                        currentCol = currentCol + 1
+                    Next k
+                    
+                    ' Add today's values and calculate differences
+                    For Each valueCol In valueCols2
+                        newWs.Cells(rowCounter, currentCol + 1).Value = ws2.Cells(i, valueCol).Value
+                        newWs.Cells(rowCounter, currentCol + 2).Formula = "=" & _
+                            newWs.Cells(rowCounter, currentCol + 1).Address & "-" & _
+                            newWs.Cells(rowCounter, currentCol).Address
+                        currentCol = currentCol + 3
+                    Next valueCol
+                    rowCounter = rowCounter + 1
+                End If
+            End If
+        Next i
+        
+        ' Format the worksheet
+        Dim lastOutputCol As Long
+        lastOutputCol = matchIndices1.Count + (valueCols1.Count * 3)
+        
+        With newWs.Range(newWs.Cells(1, 1), newWs.Cells(1, lastOutputCol))
+            .Font.Bold = True
+            .Interior.Color = RGB(200, 200, 200)
+        End With
+        
+        newWs.Columns("A:" & Split(Cells(1, lastOutputCol).Address, "$")(1)).AutoFit
+        
+        ' Format all value and difference columns
+        currentCol = matchIndices1.Count + 1
+        For Each valueCol In valueCols1
+            newWs.Range(newWs.Cells(2, currentCol), newWs.Cells(rowCounter - 1, currentCol + 2)).NumberFormat = "0.000000"
+            currentCol = currentCol + 3
+        Next valueCol
+    Next pf
+    
+    Application.DisplayAlerts = True
+End Sub
+
